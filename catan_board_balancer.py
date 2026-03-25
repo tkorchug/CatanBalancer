@@ -26,6 +26,7 @@ def point_to_segment_distance(px, py, x1, y1, x2, y2):
 
 
 def get_formation(version='original'):
+    print(version)
     hex_rad = 2 / np.sqrt(3)
     if version == 'original':
         # Hexagon locations using a doubled coordinate system
@@ -214,16 +215,151 @@ def get_formation(version='original'):
             "stone",
             "stone",
         ]
+    elif version == 'got6':
+        double_coord = [
+            [-3, 0, 0, "", 0],
+            [-2, 1, 1, "", 0],
+            [-1, 2, 2, "", 0],
+            [0, 3, 3, "", 0],
+            [2, 3, 4, "", 0],
+            [1, 2, 5, "", 0],
+            [0, 1, 6, "", 0],
+            [-1, 0, 7, "", 0],
+            [1, 0, 8, "", 0],
+            [2, 1, 9, "", 0],
+            [3, 2, 10, "", 0],
+            [4, 3, 11, "", 0],
+            [6, 3, 12, "", 0],
+            [5, 2, 13, "", 0],
+            [4, 1, 14, "", 0],
+            [3, 0, 15, "", 0],
+            [5, 0, 16, "", 0],
+            [6, 1, 17, "", 0],
+            [7, 2, 18, "", 0],
+            [8, 3, 19, "", 0],
+            [10, 3, 20, "", 0],
+            [9, 2, 21, "", 0],
+            [8, 1, 22, "", 0],
+            [7, 0, 23, "", 0],
+            [9, 0, 24, "", 0],
+            [10, 1, 25, "", 0],
+            [11, 2, 26, "", 0],
+            [12, 1, 27, "", 0],
+            [11, 0, 28, "", 0],
+        ]
+
+        # Step 1: Find min y value (lowest row - is upside down here)
+        bottom_y = min(y for x, y, *_ in double_coord)
+
+        # Step 2: Collect tiles on the bottom row
+        bottom_tiles = sorted([(x, y) for x, y, *_ in double_coord if y == bottom_y])
+
+        # Step 3: Place ports along that row every 2 tiles
+        port_coord = []
+        port_id = 0
+        port_side_choices = [-1, 0, 1]
+
+        port_side_prev = -1  # side of tile where the port on the previous tile in the line was
+        for i in range(0, len(bottom_tiles)):
+            # make sure there is no ports next to each other
+            port_side = random.choice(port_side_choices)
+            if port_side == 0:
+                port_side_choices = [-1, 1]  # allow just one tile without ports
+                port_side_prev = -1
+                continue
+            if port_side_prev == 1 and port_side == -1:
+                port_side = 1
+            port_side_prev = port_side
+
+            x, y = bottom_tiles[i]
+            x1 = x
+            x2 = x + port_side
+            y1 = float(y - hex_rad)
+            y2 = float(y - hex_rad / 2)
+            port_coord.append([x1, y1, x2, y2, port_id, ""])
+            port_id += 1
+
+            # we need only 7 ports
+            if port_id == 7:
+                break
+
+        # Compute scaled y for tiles
+        tile_centers = [(x, y, tile_id) for x, y, tile_id, *_ in double_coord]
+
+        # For each port, find 5 closest tiles (or fewer), then pad with ID of bottom right tile
+        port_banned_tiles = []
+        for port in port_coord:
+            x1, y1, x2, y2, port_id, _ = port
+            distances = []
+
+            for tx, ty, tile_id in tile_centers:
+                d = point_to_segment_distance(tx, ty, x1, y1, x2, y2)
+                distances.append((d, tile_id))
+
+            distances.sort()
+            close_ids = [tile_id for _, tile_id in distances[:5]]
+
+            # Pad if needed
+            while len(close_ids) < 5:
+                close_ids.append(28)
+
+            port_banned_tiles.append([port_id] + close_ids)
+
+        list_of_ports = ["wood", "wheat", "stone", "sheep", "brick", "wheat", "stone"]
+        default_port_locations = 0
+        list_of_roll_numbers_start = [
+            2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 8, 8, 8, 9, 9, 9, 10, 10, 10, 11, 11, 11, 12
+        ]
+        list_of_tiles_start = [
+            "sheep",
+            "sheep",
+            "sheep",
+            "sheep",
+            "sheep",
+            "sheep",
+            "wheat",
+            "wheat",
+            "wheat",
+            "wheat",
+            "wheat",
+            "wheat",
+            "wood",
+            "wood",
+            "wood",
+            "wood",
+            "wood",
+            "wood",
+            "brick",
+            "brick",
+            "brick",
+            "brick",
+            "brick",
+            "stone",
+            "stone",
+            "stone",
+            "stone",
+            "stone",
+            "stone",
+        ]
 
     else:
         raise
 
+    # we assign port types to port coord
+    prev = ''
     for p in port_coord:
         if default_port_locations == 1:
             p[5] = list_of_ports[p[4]]
         else:
-            p[5] = random.choice(list_of_ports)
-            list_of_ports.remove(p[5])
+            # we do not allow the same port type next to each other
+            port_type = random.choice(list_of_ports)
+            while port_type == prev:
+                port_type = random.choice(list_of_ports)
+            p[5] = port_type
+            list_of_ports.remove(port_type)
+            prev = port_type
+
+    print(f"Port coord: {port_coord}")
 
     return double_coord, port_coord, port_banned_tiles, list_of_ports, list_of_roll_numbers_start, list_of_tiles_start
 
@@ -231,7 +367,7 @@ def get_formation(version='original'):
 def generate_board(version='original'):
     """
     Generates image of a balanced catan board
-    :param version: original or got
+    :param version: original or got or got6
     :return: image
     """
 
@@ -289,37 +425,43 @@ def generate_board(version='original'):
                 if len(list_of_tiles) != 1:
                     list_of_tiles.remove(c[3])
 
+        # print(f"{num_of_number_fails} attempt, map {double_coord}")
+
         # brick and stone check
-        for c in double_coord:
-            if c[3] == "stone" or c[3] == "brick":
-                # run through tiles - if one is a neighbour then check if it is the same resource
-                for d in double_coord:
-                    if (
-                        (d[0] == c[0] + 2 and d[1] == c[1])
-                        or (d[0] == c[0] + 1 and d[1] == c[1] + 1)
-                        or (d[0] == c[0] - 1 and d[1] == c[1] + 1)
-                        or (d[0] == c[0] - 2 and d[1] == c[1])
-                        or (
-                            d[0] == c[0] - 1
-                            and d[1] == c[1] - 1
-                            or (d[0] == c[0] + 1 and d[1] == c[1] - 1)
-                    )
-                    ):
-                        # print(str(d[2]) + " is a neighbour of " + str(c[2]))
-                        if d[3] == c[3]:
-                            has_failed = 1
+        if version == "original":
+            for c in double_coord:
+                if c[3] == "stone" or c[3] == "brick":
+                    # run through tiles - if one is a neighbour then check if it is the same resource
+                    for d in double_coord:
+                        if (
+                                (d[0] == c[0] + 2 and d[1] == c[1])
+                                or (d[0] == c[0] + 1 and d[1] == c[1] + 1)
+                                or (d[0] == c[0] - 1 and d[1] == c[1] + 1)
+                                or (d[0] == c[0] - 2 and d[1] == c[1])
+                                or (
+                                d[0] == c[0] - 1
+                                and d[1] == c[1] - 1
+                                or (d[0] == c[0] + 1 and d[1] == c[1] - 1)
+                        )
+                        ):
+                            # print(str(d[2]) + " is a neighbour of " + str(c[2]))
+                            if d[3] == c[3]:
+                                has_failed = 1
 
         # other resources check
+        no_three_close_resources = ["wheat", "wood", "sheep"]
+        if "got" in version:
+            no_three_close_resources.extend(["brick", "stone"])
         for c in double_coord:
-            if c[3] == "wheat" or c[3] == "wood" or c[3] == "sheep":
+            if c[3] in no_three_close_resources:
                 # run through tiles - if one is a neighbour then check if it is the same resource
                 for d in double_coord:
                     if (
-                        (d[0] == c[0] + 2 and d[1] == c[1])
-                        or (d[0] == c[0] + 1 and d[1] == c[1] + 1)
-                        or (d[0] == c[0] - 1 and d[1] == c[1] + 1)
-                        or (d[0] == c[0] - 2 and d[1] == c[1])
-                        or (
+                            (d[0] == c[0] + 2 and d[1] == c[1])
+                            or (d[0] == c[0] + 1 and d[1] == c[1] + 1)
+                            or (d[0] == c[0] - 1 and d[1] == c[1] + 1)
+                            or (d[0] == c[0] - 2 and d[1] == c[1])
+                            or (
                             d[0] == c[0] - 1
                             and d[1] == c[1] - 1
                             or (d[0] == c[0] + 1 and d[1] == c[1] - 1)
@@ -330,11 +472,11 @@ def generate_board(version='original'):
                             # if neighbour is the same resource check all of it's neighbours as well
                             for e in double_coord:
                                 if (
-                                    (e[0] == d[0] + 2 and e[1] == d[1])
-                                    or (e[0] == d[0] + 1 and e[1] == d[1] + 1)
-                                    or (e[0] == d[0] - 1 and e[1] == d[1] + 1)
-                                    or (e[0] == d[0] - 2 and e[1] == d[1])
-                                    or (
+                                        (e[0] == d[0] + 2 and e[1] == d[1])
+                                        or (e[0] == d[0] + 1 and e[1] == d[1] + 1)
+                                        or (e[0] == d[0] - 1 and e[1] == d[1] + 1)
+                                        or (e[0] == d[0] - 2 and e[1] == d[1])
+                                        or (
                                         e[0] == d[0] - 1
                                         and e[1] == d[1] - 1
                                         or (e[0] == d[0] + 1 and e[1] == d[1] - 1)
@@ -369,11 +511,11 @@ def generate_board(version='original'):
         for c in double_coord:
             for d in double_coord:
                 if (
-                    (d[0] == c[0] + 2 and d[1] == c[1])
-                    or (d[0] == c[0] + 1 and d[1] == c[1] + 1)
-                    or (d[0] == c[0] - 1 and d[1] == c[1] + 1)
-                    or (d[0] == c[0] - 2 and d[1] == c[1])
-                    or (
+                        (d[0] == c[0] + 2 and d[1] == c[1])
+                        or (d[0] == c[0] + 1 and d[1] == c[1] + 1)
+                        or (d[0] == c[0] - 1 and d[1] == c[1] + 1)
+                        or (d[0] == c[0] - 2 and d[1] == c[1])
+                        or (
                         d[0] == c[0] - 1
                         and d[1] == c[1] - 1
                         or (d[0] == c[0] + 1 and d[1] == c[1] - 1)
@@ -383,31 +525,32 @@ def generate_board(version='original'):
                     if d[4] == c[4]:
                         has_failed_number = 1
 
-        # no two of the same number on one resource check
-        for c in double_coord:
-            for d in double_coord:
-                if d[2] != c[2]:
-                    if d[3] == c[3] and d[4] == c[4]:
-                        has_failed_number = 1
-
-        # no six and eight on the same resource
-        for c in double_coord:
-            if c[4] == 6 or c[4] == 8:
+        if version != 'got6':
+            # no two of the same number on one resource check
+            for c in double_coord:
                 for d in double_coord:
                     if d[2] != c[2]:
-                        if d[3] == c[3] and (d[4] == 6 or d[4] == 8):
+                        if d[3] == c[3] and d[4] == c[4]:
                             has_failed_number = 1
 
-        # no six and eight next to eachother check
+            # no six and eight on the same resource
+            for c in double_coord:
+                if c[4] == 6 or c[4] == 8:
+                    for d in double_coord:
+                        if d[2] != c[2]:
+                            if d[3] == c[3] and (d[4] == 6 or d[4] == 8):
+                                has_failed_number = 1
+
+        # no six and eight next to each other check
         for c in double_coord:
             if c[4] == 6 or c[4] == 8:
                 for d in double_coord:
                     if (
-                        (d[0] == c[0] + 2 and d[1] == c[1])
-                        or (d[0] == c[0] + 1 and d[1] == c[1] + 1)
-                        or (d[0] == c[0] - 1 and d[1] == c[1] + 1)
-                        or (d[0] == c[0] - 2 and d[1] == c[1])
-                        or (
+                            (d[0] == c[0] + 2 and d[1] == c[1])
+                            or (d[0] == c[0] + 1 and d[1] == c[1] + 1)
+                            or (d[0] == c[0] - 1 and d[1] == c[1] + 1)
+                            or (d[0] == c[0] - 2 and d[1] == c[1])
+                            or (
                             d[0] == c[0] - 1
                             and d[1] == c[1] - 1
                             or (d[0] == c[0] + 1 and d[1] == c[1] - 1)
@@ -417,11 +560,16 @@ def generate_board(version='original'):
                         if d[4] == 6 or d[4] == 8:
                             has_failed_number = 1
 
-        # no six and eight on bottom line for GOT version
-        if version == 'got':
+        # no six and eight on bottom line or in protected area for GOT version
+        if "got" in version:
             for c in double_coord:
                 if c[1] == 0 and c[4] in (6, 8):
                     has_failed_number = 1
+                if version == 'got':  # protected area
+                    if c[1] == 1 and c[0] in (6, 8) and c[4] in (6, 8):
+                        has_failed_number = 1
+                    if c[1] == 2 and c[0] == 7 and c[4] in (6, 8):
+                        has_failed_number = 1
 
         if has_failed_number == 1:
             has_failed_number = 0
@@ -463,7 +611,7 @@ def generate_board(version='original'):
             xs, ys = coords
             plt.plot(xs, ys, color="blue", alpha=ocean_alpha)
             coords = rotation_matrix @ coords
-    elif version == 'got':
+    elif "got" in version:
         pass
     else:
         raise Exception("Unknown version")

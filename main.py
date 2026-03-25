@@ -7,7 +7,7 @@ def main():
     parser = argparse.ArgumentParser(description="Catan Board Balancer")
     parser.add_argument(
         "--version",
-        choices=["original", "got"],
+        choices=["original", "got", "got5", "got6"],
         help="Choose the version of the Catan board: 'original' or 'got'"
     )
     args = parser.parse_args()
